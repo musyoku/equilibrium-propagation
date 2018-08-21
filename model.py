@@ -70,6 +70,8 @@ class Model(chainer.Chain):
 
         ndim_units = self.ndim_hidden_units + [10]
         for ndim in ndim_units:
-            states.append(xp.random.uniform(0, 1, size=(batchsize, ndim)))
+            states.append(
+                xp.random.uniform(0, 1, size=(batchsize,
+                                              ndim)).astype(xp.float32))
 
         return states
