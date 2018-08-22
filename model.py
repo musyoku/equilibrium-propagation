@@ -17,14 +17,14 @@ class Model(chainer.Chain):
             ndim_units = [784] + ndim_hidden_units + [10]
             for in_units, out_units in zip(ndim_units[:-1], ndim_units[1:]):
                 Wf = chainer.Parameter(
-                    initializer=GlorotNormal(0.1), shape=(in_units, out_units))
+                    initializer=GlorotNormal(1), shape=(in_units, out_units))
                 forward_params.append(Wf)
 
         with backward_params.init_scope():
             ndim_units = ndim_hidden_units + [10]
             for out_units, in_units in zip(ndim_units[:-1], ndim_units[1:]):
                 Wb = chainer.Parameter(
-                    initializer=GlorotNormal(0.1), shape=(in_units, out_units))
+                    initializer=GlorotNormal(1), shape=(in_units, out_units))
                 backward_params.append(Wb)
 
         with self.init_scope():

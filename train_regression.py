@@ -58,7 +58,8 @@ def main():
         xp = cp
 
     # model
-    model = Model(ndim_hidden_units=[555, 444, 333])
+    model = Model(ndim_hidden_units=[args.ndim_hidden] *
+                  args.num_hidden_layers)
     if using_gpu:
         model.to_gpu()
 
@@ -71,6 +72,9 @@ def main():
     states = model.generate_initial_states(args.batchsize)
     neighbor_state_pairs = make_neighbor_state_pairs(states, x)
     weight_pairs = model.forward_backward_weight_pairs()
+
+    beta = 1000.0
+    eps = 0.001
 
     # training loop
     for epoch in range(1000):
@@ -93,7 +97,6 @@ def main():
                 mu_array.append(mu)
 
             # update states
-            eps = 0.001
             for state, mu in zip(states, mu_array):
                 new_state = clip(state + eps * mu)
                 state[...] = new_state
@@ -104,7 +107,6 @@ def main():
             states_in_first_phase.append(xp.copy(state))
 
         ### Second Phase ###
-        beta = 1.0
         for iteration in range(100):
             # compute gradient of the loss function with respect to x
             output_state = states[-1]
@@ -132,17 +134,9 @@ def main():
                 mu_array.append(mu)
 
             # update states
-            eps = 0.001
             for state, mu in zip(states, mu_array):
                 new_state = clip(state + eps * mu)
                 state[...] = new_state
-
-        # output_state = states[-1]
-        # loss = xp.sum((output_state - y)**2)
-        # print(grad_objective)
-        # print(output_state)
-        # print(y)
-        # print(loss)
 
         # store states obtained in the first phase
         states_in_second_phase = []
@@ -158,27 +152,23 @@ def main():
              top_state), (Wf, Wb), state_first, state_second in zip(
                  neighbor_state_pairs_in_first_phase, weight_pairs,
                  states_in_first_phase, states_in_second_phase):
-            vWf = chainer.Variable(Wf.T)
+            diff = state_second - state_first
+            d = xp.expand_dims(diff, 1)
+
+            r = xp.expand_dims(rho(bottom_state), 2)
+            grad = xp.matmul(xp.expand_dims(r, 2), xp.expand_dims(d, 1))
+            grad = xp.mean(grad, axis=(0, 1))
+            Wf[...] += 0.01 * grad
 
             # output layer
             if Wb is None:
                 assert top_state is None
-                mu = cf.connection.linear.linear(rho(bottom_state),
-                                                 vWf) - state
-                mu = cf.sum(mu * (state_second - state_first))
-                vWf.cleargrad()
-                mu.backward()
-                Wf[...] -= 0.01 * vWf.grad.T
                 continue
 
-            vWb = chainer.Variable(Wb.T)
-            mu = cf.connection.linear.linear(
-                rho(bottom_state), vWf) + cf.connection.linear.linear(
-                    rho(top_state), vWb) - state
-            mu = cf.sum(mu * (state_second - state_first))
-            vWb.cleargrad()
-            mu.backward()
-            Wb[...] -= 0.01 * vWb.grad.T
+            r = xp.expand_dims(rho(top_state), 2)
+            grad = xp.matmul(xp.expand_dims(r, 2), xp.expand_dims(d, 1))
+            grad = xp.mean(grad, axis=(0, 1))
+            Wb[...] += 0.01 * grad
 
         # evaluate
         for iteration in range(200):
@@ -199,21 +189,22 @@ def main():
                 mu_array.append(mu)
 
             # update states
-            eps = 0.001
             for state, mu in zip(states, mu_array):
-                new_state = rho(state - eps * mu)
+                new_state = clip(state + eps * mu)
                 state[...] = new_state
 
         output_state = states[-1]
         loss = xp.sum((output_state - y)**2)
         print("output")
-        print(output_state)
+        print(output_state[-1])
         print("target")
-        print(y)
-        print("output　distribution")
-        print(output_state / xp.sum(output_state, axis=1, keepdims=True))
+        print(y[-1])
+        print(loss)
+        continue
+        print("output distribution")
+        print(output_state[-1] / xp.sum(output_state[-1]))
         print("target distribution")
-        print(y / xp.sum(y, axis=1, keepdims=True))
+        print(y[-1] / xp.sum(y[-1]))
 
 
 if __name__ == "__main__":
