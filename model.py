@@ -10,32 +10,26 @@ class Model(chainer.Chain):
         assert len(ndim_hidden_units) > 0
         self.ndim_hidden_units = ndim_hidden_units
 
-        forward_links = chainer.ChainList()
-        backward_links = chainer.ChainList()
+        forward_params = chainer.ChainList()
+        backward_params = chainer.ChainList()
 
-        with forward_links.init_scope():
+        with forward_params.init_scope():
             ndim_units = [784] + ndim_hidden_units + [10]
             for in_units, out_units in zip(ndim_units[:-1], ndim_units[1:]):
-                forward_links.append(
-                    L.Linear(
-                        in_units,
-                        out_units,
-                        nobias=True,
-                        initialW=GlorotNormal(1.0)))
+                Wf = chainer.Parameter(
+                    initializer=GlorotNormal(0.1), shape=(in_units, out_units))
+                forward_params.append(Wf)
 
-        with backward_links.init_scope():
+        with backward_params.init_scope():
             ndim_units = ndim_hidden_units + [10]
             for out_units, in_units in zip(ndim_units[:-1], ndim_units[1:]):
-                backward_links.append(
-                    L.Linear(
-                        in_units,
-                        out_units,
-                        nobias=True,
-                        initialW=GlorotNormal(1.0)))
+                Wb = chainer.Parameter(
+                    initializer=GlorotNormal(0.1), shape=(in_units, out_units))
+                backward_params.append(Wb)
 
         with self.init_scope():
-            self.forward_links = forward_links
-            self.backward_links = backward_links
+            self.forward_params = forward_params
+            self.backward_params = backward_params
 
     def forward_backward_weight_pairs(self):
         # e.g.
@@ -47,12 +41,12 @@ class Model(chainer.Chain):
         forward_weights = []
         backward_weights = []
 
-        for link in self.forward_links.children():
-            weight = link.W.data
+        for param in self.forward_params.children():
+            weight = param.data
             forward_weights.append(weight)
 
-        for link in self.backward_links.children():
-            weight = link.W.data
+        for param in self.backward_params.children():
+            weight = param.data
             backward_weights.append(weight)
         backward_weights.append(None)
 

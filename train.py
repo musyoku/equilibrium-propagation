@@ -17,6 +17,14 @@ def rho(state):
     raise NotImplementedError()
 
 
+def clip(state):
+    if isinstance(state, cp.ndarray):
+        return cp.clip(state, 0, 1)
+    if isinstance(state, np.ndarray):
+        return np.clip(state, 0, 1)
+    raise NotImplementedError()
+
+
 def main():
     # gpu/cpu
     xp = np
@@ -26,12 +34,12 @@ def main():
         xp = cp
 
     # model
-    model = Model(ndim_hidden_units=[123])
+    model = Model(ndim_hidden_units=[123, 345, 567])
     if using_gpu:
         model.to_gpu()
 
-    x = np.random.normal(size=(args.batchsize, 784)).astype(np.float32)
-    y = np.random.normal(size=(args.batchsize, 10)).astype(np.float32)
+    x = np.random.uniform(0, 1, size=(args.batchsize, 784)).astype(np.float32)
+    y = np.random.uniform(0, 1, size=(args.batchsize, 10)).astype(np.float32)
     if using_gpu:
         x = cuda.to_gpu(x)
         y = cuda.to_gpu(y)
@@ -72,19 +80,18 @@ def main():
                 # output layer
                 if Wb is None:
                     assert top_state is None
-                    mu = rho(bottom_state).dot(Wf.T) - state
+                    mu = rho(bottom_state).dot(Wf) - state
                     mu_array.append(mu)
                     continue
 
                 # other layers
-                mu = rho(bottom_state).dot(Wf.T) + rho(top_state).dot(
-                    Wb.T) - state
+                mu = rho(bottom_state).dot(Wf) + rho(top_state).dot(Wb) - state
                 mu_array.append(mu)
 
             # update states
             eps = 0.001
             for state, mu in zip(states, mu_array):
-                new_state = rho(state - eps * mu)
+                new_state = clip(state + eps * mu)
                 state[...] = new_state
 
         # store states obtained in the first phase
@@ -111,20 +118,25 @@ def main():
                 if Wb is None:
                     assert top_state is None
                     mu = rho(bottom_state).dot(
-                        Wf.T) - state - beta * grad_objective
+                        Wf) - state - beta * grad_objective
                     mu_array.append(mu)
                     continue
 
                 # other layers
-                mu = rho(bottom_state).dot(Wf.T) + rho(top_state).dot(
-                    Wb.T) - state
+                mu = rho(bottom_state).dot(Wf) + rho(top_state).dot(Wb) - state
                 mu_array.append(mu)
 
             # update states
             eps = 0.001
             for state, mu in zip(states, mu_array):
-                new_state = rho(state - eps * mu)
+                new_state = clip(state + eps * mu)
                 state[...] = new_state
+
+        output_state = states[-1]
+        loss = xp.sum((output_state - y)**2)
+        print(output_state)
+        print(y)
+        print(loss)
 
         # store states obtained in the first phase
         states_in_second_phase = []
@@ -132,57 +144,57 @@ def main():
             states_in_second_phase.append(xp.copy(state))
 
         # update weights
-        mu_array = []
-        assert len(states) == len(weight_pairs)
-        for (bottom_state, state,
-             top_state), (Wf, Wb), state_first, state_second in zip(
-                 neighbor_state_pairs, weight_pairs, states_in_first_phase,
-                 states_in_second_phase):
-            vWf = chainer.Variable(Wf)
-            mu = cf.sum(
-                cf.connection.linear.linear(rho(bottom_state), vWf) *
-                (state_second - state_first))
-            mu.backward()
-            Wf[...] -= 0.01 * vWf.grad
+        # mu_array = []
+        # assert len(states) == len(weight_pairs)
+        # for (bottom_state, state,
+        #      top_state), (Wf, Wb), state_first, state_second in zip(
+        #          neighbor_state_pairs, weight_pairs, states_in_first_phase,
+        #          states_in_second_phase):
+        #     vWf = chainer.Variable(Wf)
+        #     mu = cf.sum(
+        #         cf.connection.linear.linear(rho(bottom_state), vWf) *
+        #         (state_second - state_first))
+        #     mu.backward()
+        #     Wf[...] -= 0.01 * vWf.grad
 
-            if Wb is None:
-                continue
+        #     if Wb is None:
+        #         continue
 
-            vWb = chainer.Variable(Wb)
-            mu = cf.sum(
-                cf.connection.linear.linear(rho(top_state), vWb) *
-                (state_second - state_first))
-            mu.backward()
-            Wb[...] -= 0.01 * vWb.grad
+        #     vWb = chainer.Variable(Wb)
+        #     mu = cf.sum(
+        #         cf.connection.linear.linear(rho(top_state), vWb) *
+        #         (state_second - state_first))
+        #     mu.backward()
+        #     Wb[...] -= 0.01 * vWb.grad
 
         # evaluate
-        for iteration in range(200):
-            # compute vector field
-            mu_array = []
-            assert len(states) == len(weight_pairs)
-            for (bottom_state, state, top_state), (Wf, Wb) in zip(
-                    neighbor_state_pairs, weight_pairs):
-                # output layer
-                if Wb is None:
-                    assert top_state is None
-                    mu = rho(bottom_state).dot(Wf.T) - state
-                    mu_array.append(mu)
-                    continue
+        # for iteration in range(200):
+        #     # compute vector field
+        #     mu_array = []
+        #     assert len(states) == len(weight_pairs)
+        #     for (bottom_state, state, top_state), (Wf, Wb) in zip(
+        #             neighbor_state_pairs, weight_pairs):
+        #         # output layer
+        #         if Wb is None:
+        #             assert top_state is None
+        #             mu = rho(bottom_state).dot(Wf) - state
+        #             mu_array.append(mu)
+        #             continue
 
-                # other layers
-                mu = rho(bottom_state).dot(Wf.T) + rho(top_state).dot(
-                    Wb.T) - state
-                mu_array.append(mu)
+        #         # other layers
+        #         mu = rho(bottom_state).dot(Wf) + rho(top_state).dot(
+        #             Wb) - state
+        #         mu_array.append(mu)
 
-            # update states
-            eps = 0.001
-            for state, mu in zip(states, mu_array):
-                new_state = rho(state - eps * mu)
-                state[...] = new_state
+        #     # update states
+        #     eps = 0.001
+        #     for state, mu in zip(states, mu_array):
+        #         new_state = rho(state - eps * mu)
+        #         state[...] = new_state
 
-        output_state = states[-1]
-        loss = xp.sum((output_state - y)**2)
-        print(loss)
+        # output_state = states[-1]
+        # loss = xp.sum((output_state - y)**2)
+        # print(loss)
 
 
 if __name__ == "__main__":
